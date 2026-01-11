@@ -145,10 +145,13 @@ else:
                 st.write("### Varlık Dağılımı (Adet)")
                 st.bar_chart(my_port.set_index('Kod')['Adet'])
             with col2:
+                with col2:
                 st.write("### Tür Dağılımı")
-                cat_dist = my_port.groupby('Kat')['Adet'].count()
-                st.pie_chart(cat_dist)
-            
+                # Veriyi açıkça DataFrame'e çeviriyoruz (Hata burada kopuyor)
+                cat_dist = my_port['Kat'].value_counts().reset_index()
+                cat_dist.columns = ['Tür', 'Adet']
+                st.pie_chart(cat_dist, values='Adet', names='Tür')
+                
             st.markdown(f"""<div class="analysis-card"><h4>Stratejik Not</h4><p>Şu an portföyünde toplam <b>{len(my_port)}</b> farklı varlık bulunuyor. En yüksek ağırlık <b>{my_port.loc[my_port['Adet'].idxmax(), 'Kod']}</b> kodlu varlıkta.</p></div>""", unsafe_allow_html=True)
         else: st.warning("Analiz için veri yok.")
 
