@@ -9,7 +9,7 @@ import numpy as np
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(page_title="AKOSELL", layout="wide", page_icon="🏛️")
 
-# --- 2. SOL MENÜ CSS (TASARIM KORUNDU) ---
+# --- 2. SOL MENÜ CSS (TASARIM KORUNDU VE YAZI HATASI DÜZELTİLDİ) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -20,7 +20,18 @@ st.markdown("""
     .stRadio div[role="radiogroup"] { gap: 8px !important; padding: 0 15px !important; }
     .stRadio div[role="radiogroup"] label { background-color: #F1F5F9 !important; border: 1px solid #E2E8F0 !important; border-radius: 10px !important; padding: 12px 16px !important; width: 100% !important; cursor: pointer !important; display: flex !important; align-items: center !important; transition: all 0.2s ease; }
     .stRadio div[role="radiogroup"] label [data-testid="stStyleTypeDefault"] { display: none !important; }
-    .stRadio div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { color: #1E293B !important; font-size: 14px !important; font-weight: 700 !important; margin: 0 !important; padding: 0 !important; }
+    
+    /* MENÜ YAZILARINI GÖRÜNÜR YAPAN KRİTİK EKLEME */
+    .stRadio div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { 
+        color: #1E293B !important; 
+        font-size: 14px !important; 
+        font-weight: 700 !important; 
+        margin: 0 !important; 
+        padding: 0 !important;
+        display: block !important;
+        visibility: visible !important;
+    }
+
     .stRadio div[role="radiogroup"] label[data-checked="true"] { background-color: #00D1FF !important; border-color: #00D1FF !important; }
     .stRadio div[role="radiogroup"] label[data-checked="true"] p { color: #FFFFFF !important; }
     .sidebar-footer { position: fixed; bottom: 20px; width: 270px; padding: 0 15px; }
