@@ -67,7 +67,7 @@ if not st.session_state.logged_in:
 else:
     # --- 5. SIDEBAR ---
     with st.sidebar:
-        st.markdown(f"""<div class="user-profile"><small style="color:#64748B;">SİSTEM YÖNETİCİSİ</small><div style="font-size:18px; font-weight:800; color:#1E293B;">{st.session_state.u_data['Name'].upper()}</div><div style="color:#00D1FF; font-size:11px; font-weight:700;">PREMIUM PLUS</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="user-profile"><small style="color:#64748B;">SYSTEM ADMINISTRATOR</small><div style="font-size:18px; font-weight:800; color:#1E293B;">{st.session_state.u_data['Name'].upper()}</div><div style="color:#00D1FF; font-size:11px; font-weight:700;">PREMIUM PLUS</div></div>""", unsafe_allow_html=True)
         menu = st.radio("NAV", ["📊 DASHBOARD", "💼 PORTFÖYÜM", "📈 ANALİZLER", "📅 TAKVİM", "📰 HABERLER", "⚙️ AYARLAR"], label_visibility="collapsed")
         st.markdown('<div class="sidebar-footer">', unsafe_allow_html=True)
         if st.button("ÇIKIŞ", use_container_width=True):
@@ -89,7 +89,7 @@ else:
 
     # --- 7. DASHBOARD ---
     if "DASHBOARD" in menu:
-        st.title("📊 Stratejik Varlık Analizi")
+        st.title("📊 DASHBOARD")
         if not my_port.empty:
             with st.spinner('Piyasa verileri çekiliyor...'):
                 display_df = my_port.copy()
