@@ -76,7 +76,7 @@ if not st.session_state.logged_in:
     
     with col_mid:
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center;'>🏛️ AKOSELL WMS</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>🏛️ AutoFlow</h2>", unsafe_allow_html=True)
         tab1, tab2 = st.tabs(["Giriş Yap", "Kayıt Ol"])
         
         with tab1:
@@ -113,7 +113,7 @@ else:
     with st.sidebar:
         u_name = st.session_state.u_data.get('Name', 'Kullanıcı')
         u_role = st.session_state.u_data.get('Role', 'User')
-        st.markdown(f"### 🏛️ AKOSELL WMS\n**{u_name}**")
+        st.markdown(f"### 🏛️ AutoFlow\n**{u_name}**")
         nav = ["📊 DASHBOARD", "⚖️ OPTİMİZASYON", "💼 PORTFÖYÜM", "⚙️ AYARLAR"]
         if u_role == "Admin": nav.append("🔑 ADMIN PANELİ")
         menu = st.radio("MENÜ", nav)
