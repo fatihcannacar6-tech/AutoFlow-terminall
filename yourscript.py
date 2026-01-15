@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 import plotly.graph_objects as go
 from scipy.optimize import minimize
+from fpdf import FPDF
+import io
 
 # --- 1. VERİTABANI SİSTEMİ ---
 USER_DB, PORT_DB = "users_v17.csv", "portfolio_v17.csv"
@@ -22,15 +24,29 @@ def init_db():
 
 init_db()
 
-# --- 2. MODERN BEYAZ ARAYÜZ ---
+# --- 2. MODERN BEYAZ ARAYÜZ VE MOBİL LOGİN DÜZENİ ---
 st.set_page_config(page_title="AutoFlow Terminal", layout="wide", page_icon="🏛️")
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F8FAFC; }
+    
+    /* Login Ekranını Küçültme ve Ortalama */
+    .login-box {
+        max-width: 420px;
+        margin: auto;
+        padding: 30px;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    }
+    
     .ai-card { background: white; padding: 25px; border-radius: 15px; border-left: 6px solid #4F46E5; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); margin-bottom: 20px; }
     .stMetric { background: white !important; padding: 20px !important; border-radius: 12px !important; border: 1px solid #F1F5F9 !important; }
     [data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 1px solid #E2E8F0; }
+    
+    /* Mobil Buton Ayarı */
+    div.stButton > button { width: 100% !important; border-radius: 10px; height: 45px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,37 +66,47 @@ def fetch_prices(df):
     df['Kâr/Zarar'] = df['Değer'] - (df['Maliyet'] * df['Adet'])
     return df
 
-# --- 4. GİRİŞ VE KAYIT PANELİ (Hata Giderildi) ---
+# --- 4. GİRİŞ VE KAYIT PANELİ (ORTALANMIŞ VE KÜÇÜLTÜLMÜŞ) ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    tab1, tab2 = st.tabs(["Giriş Yap", "Kayıt Ol"])
-    with tab1:
-        u = st.text_input("Kullanıcı Adı", key="login_u")
-        p = st.text_input("Şifre", type="password", key="login_p")
-        if st.button("GİRİŞ", use_container_width=True, type="primary"):
-            users = pd.read_csv(USER_DB)
-            hp = hashlib.sha256(str.encode(p)).hexdigest()
-            match = users[(users['Username']==u) & (users['Password']==hp)]
-            if not match.empty:
-                if match.iloc[0]['Status'] == "Active":
-                    st.session_state.logged_in = True
-                    st.session_state.u_data = match.iloc[0].to_dict()
-                    st.rerun()
-                else: st.warning("Hesabınız admin onayı bekliyor.")
-            else: st.error("Hatalı bilgiler.")
-    with tab2:
-        new_u = st.text_input("Kullanıcı Adı Belirle", key="reg_u").lower()
-        new_n = st.text_input("Ad Soyad", key="reg_n")
-        new_p = st.text_input("Yeni Şifre Oluştur", type="password", key="reg_p")
-        if st.button("KAYIT TALEBİ GÖNDER", use_container_width=True):
-            users = pd.read_csv(USER_DB)
-            if new_u in users['Username'].values: st.error("Kullanıcı adı mevcut.")
-            else:
-                hp = hashlib.sha256(str.encode(new_p)).hexdigest()
-                new_user = pd.DataFrame([[new_u, hp, new_n, "User", "Pending"]], columns=users.columns)
-                new_user.to_csv(USER_DB, mode='a', header=False, index=False)
-                st.success("Talep admin (fatihcan) onayına gönderildi.")
+    # Boşluklar kullanarak Login alanını ortaya hapsediyoruz
+    st.write("##") 
+    _, col_mid, _ = st.columns([1, 1.2, 1]) # Ortadaki sütun giriş ekranı olacak
+    
+    with col_mid:
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>🏛️ AKOSELL WMS</h2>", unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["Giriş Yap", "Kayıt Ol"])
+        
+        with tab1:
+            u = st.text_input("Kullanıcı Adı", key="login_u")
+            p = st.text_input("Şifre", type="password", key="login_p")
+            if st.button("GİRİŞ YAP", type="primary"):
+                users = pd.read_csv(USER_DB)
+                hp = hashlib.sha256(str.encode(p)).hexdigest()
+                match = users[(users['Username']==u) & (users['Password']==hp)]
+                if not match.empty:
+                    if match.iloc[0]['Status'] == "Active":
+                        st.session_state.logged_in = True
+                        st.session_state.u_data = match.iloc[0].to_dict()
+                        st.rerun()
+                    else: st.warning("Hesabınız admin onayı bekliyor.")
+                else: st.error("Hatalı bilgiler.")
+        
+        with tab2:
+            new_u = st.text_input("Kullanıcı Adı Belirle", key="reg_u").lower()
+            new_n = st.text_input("Ad Soyad", key="reg_n")
+            new_p = st.text_input("Yeni Şifre Oluştur", type="password", key="reg_p")
+            if st.button("KAYIT TALEBİ GÖNDER"):
+                users = pd.read_csv(USER_DB)
+                if new_u in users['Username'].values: st.error("Kullanıcı adı mevcut.")
+                else:
+                    hp = hashlib.sha256(str.encode(new_p)).hexdigest()
+                    new_user = pd.DataFrame([[new_u, hp, new_n, "User", "Pending"]], columns=users.columns)
+                    new_user.to_csv(USER_DB, mode='a', header=False, index=False)
+                    st.success("Talep gönderildi.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 else:
     # --- 5. SIDEBAR ---
@@ -111,7 +137,7 @@ else:
             st.plotly_chart(go.Figure(data=[go.Pie(labels=proc_df['Kod'], values=proc_df['Değer'], hole=.4)]))
         else: st.info("Varlık ekleyin.")
 
-    # --- 7. AI PORTFÖY OPTİMİZASYONU (İSTEDİĞİN GÜNCELLEME) ---
+    # --- 7. AI PORTFÖY OPTİMİZASYONU & PDF RAPORU ---
     elif menu == "⚖️ OPTİMİZASYON":
         st.title("⚖️ AI Risk & Optimizasyon Analizi")
         if len(my_port) >= 2:
@@ -124,30 +150,52 @@ else:
                     tk = f"{a}.IS" if my_port[my_port['Kod']==a]['Kat'].values[0]=="Hisse" else f"{a}-USD"
                     hist = yf.Ticker(tk).history(period="1y")['Close']
                     data[a] = hist
-                    
-                    # Risk ve Sinyal Hesaplama
                     vol = hist.pct_change().std() * np.sqrt(252) * 100
                     ma20 = hist.rolling(20).mean().iloc[-1]
                     last = hist.iloc[-1]
-                    
                     risk_cat = "Düşük" if vol < 25 else ("Orta" if vol < 45 else "Yüksek")
-                    signal = "🟢 AL / TUT" if last > ma20 else "🔴 SAT / İZLE"
-                    
-                    analysis_results.append({"Varlık": a, "Yıllık Risk (%)": f"{vol:.2f}", "Risk Seviyesi": risk_cat, "AI Sinyali": signal})
+                    signal = "AL / TUT" if last > ma20 else "SAT / İZLE"
+                    analysis_results.append({"Varlık": a, "Risk (%)": f"{vol:.2f}", "Risk Seviyesi": risk_cat, "Sinyal": signal})
 
-            # Hisse Hisse Detaylı Rapor
+            res_df = pd.DataFrame(analysis_results)
             st.subheader("📋 Hisse Bazlı AI Sinyalleri")
-            st.table(pd.DataFrame(analysis_results))
+            st.table(res_df)
 
-            # Sepet Optimizasyonu
+            # PDF Oluşturma Fonksiyonu
+            def export_pdf(df):
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 16)
+                pdf.cell(190, 10, "AutoFlow AI Portfoy Analizi", ln=True, align='C')
+                pdf.ln(10)
+                pdf.set_font("Arial", 'B', 12)
+                # Tablo Başlıkları
+                pdf.cell(40, 10, "Varlik", 1)
+                pdf.cell(40, 10, "Risk %", 1)
+                pdf.cell(50, 10, "Risk Seviyesi", 1)
+                pdf.cell(60, 10, "Sinyal", 1)
+                pdf.ln()
+                # Tablo Verileri
+                pdf.set_font("Arial", '', 12)
+                for i, row in df.iterrows():
+                    pdf.cell(40, 10, str(row['Varlık']), 1)
+                    pdf.cell(40, 10, str(row['Risk (%)']), 1)
+                    pdf.cell(50, 10, str(row['Risk Seviyesi']), 1)
+                    pdf.cell(60, 10, str(row['Sinyal']), 1)
+                    pdf.ln()
+                return pdf.output(dest='S').encode('latin-1')
+
+            # PDF İndirme Butonu
+            pdf_data = export_pdf(res_df)
+            st.download_button("📄 ANALİZ RAPORUNU PDF İNDİR", data=pdf_data, file_name="AI_Analiz_Raporu.pdf", mime="application/pdf")
+
+            # Sepet Optimizasyonu Grafiği
             st.divider()
-            st.subheader("🎯 İdeal Portföy Dağılımı (Modern Portföy Teorisi)")
+            st.subheader("🎯 İdeal Portföy Dağılımı")
             returns = data.pct_change().dropna()
             def get_vol(w): return np.sqrt(np.dot(w.T, np.dot(returns.cov() * 252, w)))
             res = minimize(get_vol, [1./len(assets)]*len(assets), bounds=[(0,1)]*len(assets), constraints={'type':'eq','fun': lambda x: np.sum(x)-1})
-            
             st.plotly_chart(go.Figure(data=[go.Pie(labels=assets, values=res.x, hole=.3)]))
-            st.success("AI Önerisi: Yukarıdaki dağılım riskinizi minimize eder.")
         else: st.warning("Analiz için en az 2 farklı varlık ekleyin.")
 
     # --- 8. ADMIN PANELİ ---
