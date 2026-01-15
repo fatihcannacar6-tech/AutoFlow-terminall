@@ -23,8 +23,8 @@ def init_db():
 
 init_db()
 
-# --- 2. MODER VE MOBİL UYUMLU ARAYÜZ ---
-st.set_page_config(page_title="AutoFlow", layout="wide", page_icon="🏛️")
+# --- 2. MODERN VE MOBİL UYUMLU ARAYÜZ ---
+st.set_page_config(page_title="AutoFlow Terminal", layout="wide", page_icon="🏛️")
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
@@ -75,7 +75,7 @@ if not st.session_state.logged_in:
     _, col_mid, _ = st.columns([1, 1.2, 1])
     with col_mid:
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center;'>🏛️ AutoFlow</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>AutoFlow</h2>", unsafe_allow_html=True)
         tab1, tab2 = st.tabs(["Giriş Yap", "Kayıt Ol"])
         with tab1:
             u = st.text_input("Kullanıcı Adı", key="login_u")
@@ -110,7 +110,7 @@ else:
     with st.sidebar:
         u_name = st.session_state.u_data.get('Name', 'Kullanıcı')
         u_role = st.session_state.u_data.get('Role', 'User')
-        st.markdown(f"### 🏛️ AutoFlow\n**{u_name}**")
+        st.markdown(f"### AutoFlow\n**{u_name}**")
         menu = st.radio("MENÜ", ["📊 DASHBOARD", "⚖️ OPTİMİZASYON", "💼 PORTFÖYÜM", "⚙️ AYARLAR"] + (["🔑 ADMIN PANELİ"] if u_role == "Admin" else []))
         if st.button("Güvenli Çıkış"):
             st.session_state.logged_in = False
@@ -119,7 +119,7 @@ else:
     df_port = pd.read_csv(PORT_DB)
     my_port = df_port[df_port['Owner'] == st.session_state.u_data.get('Username')]
 
-    # --- 6. DASHBOARD ---
+    # --- 6. DASHBOARD (SADECE HİSSELERE İNDİRGENMİŞ) ---
     if menu == "📊 DASHBOARD":
         st.title("📊 Mevcut Portföy Durumu")
         if not my_port.empty:
@@ -127,7 +127,7 @@ else:
             st.dataframe(proc_df[["Kod", "Adet", "Maliyet", "Güncel", "Kâr/Zarar"]], use_container_width=True, hide_index=True)
         else: st.info("Henüz varlık eklemediniz.")
 
-    # --- 7. AI OPTİMİZASYON ---
+    # --- 7. AI OPTİMİZASYON (RENKLİ SİNYALLER & PDF) ---
     elif menu == "⚖️ OPTİMİZASYON":
         st.title("⚖️ AI Risk & Optimizasyon Analizi")
         if len(my_port) >= 2:
@@ -142,6 +142,7 @@ else:
                     vol = hist.pct_change().std() * np.sqrt(252) * 100
                     ma20 = hist.rolling(20).mean().iloc[-1]
                     last = hist.iloc[-1]
+                    # İSTEK: Renkli ve metin güncellenmiş sinyaller
                     signal = "🟢 AL TUT" if last > ma20 else "🔴 SAT İZLE"
                     analysis_results.append({"Varlık": a, "Risk (%)": f"{vol:.2f}", "Sinyal": signal})
 
@@ -152,12 +153,12 @@ else:
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 16)
-                pdf.cell(190, 10, tr_fix("AutoFlow AI Analiz Raporu"), ln=True, align='C')
+                pdf.cell(190, 10, tr_fix("AutoFlow AI Portfoy Analiz Raporu"), ln=True, align='C')
                 pdf.ln(10)
                 pdf.set_font("Arial", 'B', 12)
                 pdf.cell(60, 10, tr_fix("Varlik"), 1)
                 pdf.cell(60, 10, tr_fix("Risk %"), 1)
-                pdf.cell(60, 10, tr_fix("Sinyal"), 1)
+                pdf.cell(60, 10, tr_fix("AI Sinyali"), 1)
                 pdf.ln()
                 pdf.set_font("Arial", '', 12)
                 for i, row in df.iterrows():
@@ -171,9 +172,11 @@ else:
             st.download_button("📄 ANALİZ RAPORUNU PDF İNDİR", data=pdf_bytes, file_name="AI_Analiz.pdf", mime="application/pdf")
         else: st.warning("En az 2 varlık ekleyin.")
 
-    # --- 8. PORTFÖYÜM ---
+    # --- 8. PORTFÖYÜM (SÜZENLE VE KAYDET) ---
     elif menu == "💼 PORTFÖYÜM":
         st.title("💼 Varlık Düzenle ve Kaydet")
+        
+        # Mevcut hisseleri düzenleme alanı
         if not my_port.empty:
             st.subheader("Hisseleri Güncelle")
             updated_data = []
@@ -190,6 +193,7 @@ else:
             
             if st.button("TÜM DEĞİŞİKLİKLERİ KAYDET"):
                 df_all = pd.read_csv(PORT_DB)
+                # Sadece bu kullanıcınınkileri silip yenilerini ekleyelim
                 df_others = df_all[df_all['Owner'] != st.session_state.u_data['Username']]
                 df_new_mine = pd.DataFrame(updated_data, columns=df_all.columns)
                 pd.concat([df_others, df_new_mine]).to_csv(PORT_DB, index=False)
