@@ -23,7 +23,7 @@ def init_db():
 init_db()
 
 # --- 2. MODERN BEYAZ ARAYÜZ ---
-st.set_page_config(page_title="AKOSELL WMS Terminal", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="AutoFlow Terminal", layout="wide", page_icon="🏛️")
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
@@ -58,7 +58,7 @@ if not st.session_state.logged_in:
     with tab1:
         u = st.text_input("Kullanıcı Adı", key="login_u")
         p = st.text_input("Şifre", type="password", key="login_p")
-        if st.button("TERMİNALE GİRİŞ", use_container_width=True, type="primary"):
+        if st.button("GİRİŞ", use_container_width=True, type="primary"):
             users = pd.read_csv(USER_DB)
             hp = hashlib.sha256(str.encode(p)).hexdigest()
             match = users[(users['Username']==u) & (users['Password']==hp)]
