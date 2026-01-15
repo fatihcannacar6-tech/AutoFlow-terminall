@@ -3,13 +3,14 @@ import pandas as pd
 import os
 import hashlib
 import yfinance as yf
-from datetime import datetime
-import numpy as np
+from datetime import datetime, timedelta
+import plotly.express as px
+import plotly.graph_objects as go
 
 # --- 1. SAYFA AYARLARI ---
-st.set_page_config(page_title="AKOSELL", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="AKOSELL WMS", layout="wide", page_icon="🏛️")
 
-# --- 2. SOL MENÜ CSS (TASARIM KORUNDU VE YAZI HATASI DÜZELTİLDİ) ---
+# --- 2. GELİŞMİŞ UI TASARIMI (CSS) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -18,234 +19,210 @@ st.markdown("""
     .user-profile { padding: 20px; background: #F8FAFC; border-radius: 12px; margin: 10px 15px 25px 15px; border: 1px solid #E2E8F0; text-align: center; }
     [data-testid="stSidebarNav"] { display: none; }
     .stRadio div[role="radiogroup"] { gap: 8px !important; padding: 0 15px !important; }
-    .stRadio div[role="radiogroup"] label { background-color: #F1F5F9 !important; border: 1px solid #E2E8F0 !important; border-radius: 10px !important; padding: 12px 16px !important; width: 100% !important; cursor: pointer !important; display: flex !important; align-items: center !important; transition: all 0.2s ease; }
-    .stRadio div[role="radiogroup"] label [data-testid="stStyleTypeDefault"] { display: none !important; }
-    
-    /* MENÜ YAZILARINI GÖRÜNÜR YAPAN KRİTİK EKLEME */
-    .stRadio div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { 
-        color: #1E293B !important; 
-        font-size: 14px !important; 
-        font-weight: 700 !important; 
-        margin: 0 !important; 
-        padding: 0 !important;
-        display: block !important;
-        visibility: visible !important;
-    }
-
+    .stRadio div[role="radiogroup"] label { background-color: #F1F5F9 !important; border: 1px solid #E2E8F0 !important; border-radius: 10px !important; padding: 12px 16px !important; width: 100% !important; cursor: pointer !important; display: flex !important; align-items: center !important; }
+    .stRadio div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { color: #1E293B !important; font-size: 14px !important; font-weight: 700 !important; }
     .stRadio div[role="radiogroup"] label[data-checked="true"] { background-color: #00D1FF !important; border-color: #00D1FF !important; }
     .stRadio div[role="radiogroup"] label[data-checked="true"] p { color: #FFFFFF !important; }
-    .sidebar-footer { position: fixed; bottom: 20px; width: 270px; padding: 0 15px; }
-    .analysis-card { background: white; padding: 20px; border-radius: 15px; border-left: 5px solid #00D1FF; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .metric-card { background: white; padding: 20px; border-radius: 15px; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    .stExpander { border: none !important; box-shadow: none !important; background: #F8FAFC !important; border-radius: 10px !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. VERİ SİSTEMİ ---
-USER_DB, PORT_DB = "users_v12.csv", "portfolio_v12.csv"
+USER_DB, PORT_DB, HISTORY_DB = "users_v26.csv", "portfolio_v26.csv", "history_v26.csv"
 
 def init_db():
-    if not os.path.exists(USER_DB): pd.DataFrame(columns=["Username", "Password", "Name", "Email"]).to_csv(USER_DB, index=False)
-    if not os.path.exists(PORT_DB): pd.DataFrame(columns=["Owner", "Kod", "YF_Kod", "Maliyet", "Adet", "Kat"]).to_csv(PORT_DB, index=False)
+    for db, cols in zip([USER_DB, PORT_DB, HISTORY_DB], 
+                        [["Username", "Password", "Name", "Email", "Status", "Role"],
+                         ["Owner", "Kod", "Maliyet", "Adet", "Kat", "Sektor"],
+                         ["Owner", "Tarih", "Kod", "Tip", "Adet", "Fiyat"]]):
+        if not os.path.exists(db):
+            if db == USER_DB:
+                admin_pw = hashlib.sha256(str.encode("admin123")).hexdigest()
+                pd.DataFrame([["admin", admin_pw, "Yönetici", "admin@akosell.com", "Approved", "Admin"]], columns=cols).to_csv(db, index=False)
+            else:
+                pd.DataFrame(columns=cols).to_csv(db, index=False)
 
 init_db()
 
+# --- 4. YARDIMCI FONKSİYONLAR ---
+@st.cache_data(ttl=600)
+def fetch_live_data(symbol, kat):
+    try:
+        s = f"{symbol}.IS" if kat == "Hisse" else (f"{symbol}-USD" if kat == "Kripto" else symbol)
+        t = yf.Ticker(s)
+        hist = t.history(period="2d")
+        curr = hist['Close'].iloc[-1]
+        prev = hist['Close'].iloc[-2]
+        change = ((curr - prev) / prev) * 100
+        return round(curr, 2), round(change, 2)
+    except: return 0.0, 0.0
+
+# --- 5. AUTH SİSTEMİ ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
-# --- 4. GİRİŞ SİSTEMİ ---
 if not st.session_state.logged_in:
-    _, center_col, _ = st.columns([1, 1.2, 1])
-    with center_col:
-        st.markdown("<br><h1 style='text-align:center;'>AKOSELL</h1>", unsafe_allow_html=True)
-        u = st.text_input("Kullanıcı")
-        p = st.text_input("Şifre", type="password")
-        if st.button("GİRİŞ", use_container_width=True, type="primary"):
-            users = pd.read_csv(USER_DB)
-            hp = hashlib.sha256(str.encode(p)).hexdigest()
-            if not users[(users['Username']==u) & (users['Password']==hp)].empty:
-                st.session_state.logged_in = True
-                st.session_state.u_data = users[users['Username']==u].iloc[0].to_dict()
-                st.rerun()
-else:
-    # --- 5. SIDEBAR ---
-    with st.sidebar:
-        st.markdown(f"""<div class="user-profile"><small style="color:#64748B;">SYSTEM ADMINISTRATOR</small><div style="font-size:18px; font-weight:800; color:#1E293B;">{st.session_state.u_data['Name'].upper()}</div><div style="color:#00D1FF; font-size:11px; font-weight:700;">PREMIUM PLUS</div></div>""", unsafe_allow_html=True)
-        menu = st.radio("NAV", ["📊 DASHBOARD", "💼 PORTFÖYÜM", "📈 ANALİZLER", "📅 TAKVİM", "📰 HABERLER", "⚙️ AYARLAR"], label_visibility="collapsed")
-        st.markdown('<div class="sidebar-footer">', unsafe_allow_html=True)
-        if st.button("ÇIKIŞ", use_container_width=True):
-            st.session_state.logged_in = False
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # --- 6. YARDIMCI FONKSİYONLAR ---
-    def get_single_price(symbol, kat):
-        try:
-            ticker_map = {"Hisse": f"{symbol}.IS", "Kripto": f"{symbol}-USD"}
-            ticker_name = ticker_map.get(kat, symbol)
-            data = yf.Ticker(ticker_name).history(period="1d")
-            return float(data['Close'].iloc[-1]) if not data.empty else 0.0
-        except: return 0.0
-
-    df_port = pd.read_csv(PORT_DB)
-    my_port = df_port[df_port['Owner'] == st.session_state.u_data['Username']]
-
-    # --- 7. DASHBOARD ---
-    if "DASHBOARD" in menu:
-        st.title("📊 DASHBOARD")
-        if not my_port.empty:
-            with st.spinner('Piyasa verileri çekiliyor...'):
-                display_df = my_port.copy()
-                prices = [get_single_price(r['Kod'], r['Kat']) for i, r in display_df.iterrows()]
-                display_df['Güncel Fiyat'] = [p if p > 0 else r['Maliyet'] for p, (i, r) in zip(prices, display_df.iterrows())]
-                display_df['Toplam Maliyet'] = display_df['Maliyet'] * display_df['Adet']
-                display_df['Toplam Değer'] = display_df['Güncel Fiyat'] * display_df['Adet']
-                display_df['Kâr/Zarar'] = display_df['Toplam Değer'] - display_df['Toplam Maliyet']
-                
-                t_cost = display_df['Toplam Maliyet'].sum()
-                t_value = display_df['Toplam Değer'].sum()
-                t_profit = t_value - t_cost
-                p_ratio = (t_profit / t_cost * 100) if t_cost > 0 else 0
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("TOPLAM YATIRIM", f"₺{t_cost:,.2f}")
-            c2.metric("NET KÂR / ZARAR", f"₺{t_profit:,.2f}", delta=f"{p_ratio:.2f}%")
-            c3.metric("PORTFÖY DEĞERİ", f"₺{t_value:,.2f}")
-            st.divider()
-            st.dataframe(display_df[["Kod", "Kat", "Adet", "Maliyet", "Güncel Fiyat", "Kâr/Zarar"]], use_container_width=True, hide_index=True)
-        else: st.info("Portföy boş.")
-
-    # --- 8. PORTFÖYÜM ---
-    elif "PORTFÖYÜM" in menu:
-        st.title("💼 Portföy Yönetimi")
-        t1, t2 = st.tabs(["EKLE", "DÜZENLE/SİL"])
-        with t1:
-            with st.form("add_v5"):
-                c1, c2, c3 = st.columns(3)
-                k = c1.text_input("Varlık Kodu").upper()
-                m = c2.number_input("Maliyet", min_value=0.0)
-                a = c3.number_input("Adet", min_value=0.0)
-                cat = st.selectbox("Tür", ["Hisse", "Kripto", "Altın", "Döviz"])
-                if st.form_submit_button("SİSTEME KAYDET"):
-                    new_row = pd.DataFrame([[st.session_state.u_data['Username'], k, k, m, a, cat]], columns=["Owner", "Kod", "YF_Kod", "Maliyet", "Adet", "Kat"])
-                    pd.concat([pd.read_csv(PORT_DB), new_row]).to_csv(PORT_DB, index=False)
+    _, center, _ = st.columns([1, 1.2, 1])
+    with center:
+        st.markdown("<h1 style='text-align:center;'>AKOSELL</h1>", unsafe_allow_html=True)
+        tab_in, tab_up = st.tabs(["GİRİŞ", "KAYIT"])
+        with tab_in:
+            u = st.text_input("Kullanıcı", key="li_u")
+            p = st.text_input("Şifre", type="password", key="li_p")
+            if st.button("SİSTEME GİRİŞ", use_container_width=True, type="primary"):
+                users = pd.read_csv(USER_DB)
+                hp = hashlib.sha256(str.encode(p)).hexdigest()
+                user = users[(users['Username']==u) & (users['Password']==hp)]
+                if not user.empty and user.iloc[0]['Status'] == "Approved":
+                    st.session_state.logged_in, st.session_state.u_data = True, user.iloc[0].to_dict()
                     st.rerun()
-        with t2:
-            edited = st.data_editor(my_port[["Kod", "Maliyet", "Adet", "Kat"]], num_rows="dynamic", use_container_width=True)
-            if st.button("DEĞİŞİKLİKLERİ KAYDET"):
-                others = df_port[df_port['Owner'] != st.session_state.u_data['Username']]
-                edited['Owner'] = st.session_state.u_data['Username']
-                edited['YF_Kod'] = edited['Kod']
-                pd.concat([others, edited]).to_csv(PORT_DB, index=False)
-                st.rerun()
+                else: st.error("Hatalı giriş veya onaylanmamış hesap.")
+        with tab_up:
+            nu, nn, ne, npw = st.text_input("Kullanıcı Adı", key="re_u"), st.text_input("Ad Soyad", key="re_n"), st.text_input("E-Posta", key="re_e"), st.text_input("Şifre", type="password", key="re_p")
+            if st.button("KAYIT OL", use_container_width=True):
+                db = pd.read_csv(USER_DB)
+                if nu in db['Username'].values: st.error("Kullanıcı adı alınmış.")
+                else:
+                    new_u = pd.DataFrame([[nu, hashlib.sha256(str.encode(npw)).hexdigest(), nn, ne, "Pending", "User"]], columns=db.columns)
+                    pd.concat([db, new_u]).to_csv(USER_DB, index=False); st.success("Talep gönderildi.")
 
-   # --- 9. ANALİZLER (GERÇEK VERİ) ---
-    elif "ANALİZLER" in menu:
-        st.title("📈 Portföy Analitiği")
-        if not my_port.empty:
-            col1, col2 = st.columns(2)
+else:
+    # --- 6. SIDEBAR NAV ---
+    with st.sidebar:
+        st.markdown(f"""<div class="user-profile"><small>AKOSELL WMS</small><div style="font-size:18px; font-weight:800;">{st.session_state.u_data['Name'].upper()}</div><div style="color:#00D1FF; font-size:11px; font-weight:700;">PRO TERMINAL</div></div>""", unsafe_allow_html=True)
+        menu = st.radio("NAV", ["📊 DASHBOARD", "💼 PORTFÖYÜM", "📈 ANALİZLER", "📅 TAKVİM", "📰 HABERLER", "⚙️ AYARLAR"], label_visibility="collapsed")
+        if st.button("GÜVENLİ ÇIKIŞ", use_container_width=True): st.session_state.logged_in = False; st.rerun()
+
+    p_df = pd.read_csv(PORT_DB)
+    my_p = p_df[p_df['Owner'] == st.session_state.u_data['Username']].copy()
+
+    # --- 7. DASHBOARD (BENCHMARK & ÖZET) ---
+    if menu == "📊 DASHBOARD":
+        st.title("📊 Finansal Özet")
+        if not my_p.empty:
+            with st.spinner("Canlı veriler işleniyor..."):
+                results = [fetch_live_data(r['Kod'], r['Kat']) for i, r in my_p.iterrows()]
+                my_p['Güncel'], my_p['Değişim'] = [res[0] for res in results], [res[1] for res in results]
+                my_p['Değer'] = my_p['Güncel'] * my_p['Adet']
+                my_p['Maliyet_T'] = my_p['Maliyet'] * my_p['Adet']
+                my_p['Net_PL'] = my_p['Değer'] - my_p['Maliyet_T']
             
-            with col1:
-                st.write("### Varlık Dağılımı (Adet)")
-                # Bar chart için veriyi hazırlıyoruz
-                bar_data = my_port.copy()
-                st.bar_chart(bar_data.set_index('Kod')['Adet'])
+            # Üst Metrikler
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("PORTFÖY DEĞERİ", f"₺{my_p['Değer'].sum():,.2f}")
+            c2.metric("TOPLAM K/Z", f"₺{my_p['Net_PL'].sum():,.2f}", f"{((my_p['Değer'].sum()/my_p['Maliyet_T'].sum()-1)*100):.2f}%")
             
-            with col2:
-                st.write("### Tür Dağılımı")
-                # Hata veren kısmı burası düzeltiyor:
-                # 'Kat' sütunundaki değerleri say ve tabloya çevir
-                cat_dist = my_port['Kat'].value_counts().reset_index()
-                # Sütun isimlerini netleştir
-                cat_dist.columns = ['Tür', 'Sayı']
-                # Grafiği çizdir
-                st.pie_chart(cat_dist, values='Sayı', names='Tür')
-                
-            st.markdown(f"""
+            # Benchmark (BIST100 Karşılaştırma)
+            bist_price, bist_chg = fetch_live_data("XU100", "Hisse")
+            c3.metric("BIST 100", f"{bist_price:,.0f}", f"{bist_chg}%")
+            
+            # Günlük Kar/Zarar Tahmini
+            daily_pl = (my_p['Değer'] * (my_p['Değişim']/100)).sum()
+            c4.metric("GÜNLÜK DEĞİŞİM", f"₺{daily_pl:,.2f}", f"{(daily_pl/my_p['Değer'].sum()*100):.2f}%")
+
+            st.divider()
+            col_l, col_r = st.columns([2, 1])
+            with col_l:
+                st.subheader("Varlık Listesi")
+                st.dataframe(my_p[['Kod', 'Kat', 'Adet', 'Maliyet', 'Güncel', 'Değişim', 'Net_PL']], use_container_width=True, hide_index=True)
+            with col_r:
+                st.subheader("Performans Liderleri")
+                st.table(my_p.sort_values(by='Değişim', ascending=False)[['Kod', 'Değişim']].head(3))
+        else: st.info("Veri girişi yapın.")
+
+    # --- 8. PORTFÖYÜM (İŞLEM GEÇMİŞİ & YÖNETİM) ---
+    elif menu == "💼 PORTFÖYÜM":
+        st.title("💼 Varlık ve İşlem Yönetimi")
+        t_add, t_hist = st.tabs(["YENİ İŞLEM", "GEÇMİŞ"])
+        
+        with t_add:
+            with st.form("trade"):
+                c1, c2, c3, c4 = st.columns(4)
+                tk, tt = c1.text_input("Kod").upper(), c2.selectbox("İşlem", ["ALIM", "SATIM"])
+                ta, tf = c3.number_input("Adet", min_value=0.01), c4.number_input("Fiyat")
+                tcat, tsek = st.selectbox("Kategori", ["Hisse", "Kripto", "Emtia"]), st.text_input("Sektör (Opsiyonel)")
+                if st.form_submit_button("İŞLEMİ ONAYLA"):
+                    # Portföyü Güncelle
+                    if tt == "ALIM":
+                        if tk in my_p['Kod'].values:
+                            idx = p_df[(p_df['Owner']==st.session_state.u_data['Username']) & (p_df['Kod']==tk)].index
+                            old_a, old_m = p_df.loc[idx, 'Adet'].values[0], p_df.loc[idx, 'Maliyet'].values[0]
+                            new_a = old_a + ta
+                            new_m = ((old_a * old_m) + (ta * tf)) / new_a
+                            p_df.loc[idx, 'Adet'], p_df.loc[idx, 'Maliyet'] = new_a, new_m
+                        else:
+                            new_row = pd.DataFrame([[st.session_state.u_data['Username'], tk, tf, ta, tcat, tsek]], columns=p_df.columns)
+                            p_df = pd.concat([p_df, new_row])
+                    p_df.to_csv(PORT_DB, index=False)
+                    
+                    # Geçmişe Yaz
+                    h_df = pd.read_csv(HISTORY_DB)
+                    h_new = pd.DataFrame([[st.session_state.u_data['Username'], datetime.now().date(), tk, tt, ta, tf]], columns=h_df.columns)
+                    pd.concat([h_df, h_new]).to_csv(HISTORY_DB, index=False)
+                    st.success("İşlem kaydedildi."); st.rerun()
+        
+        with t_hist:
+            h_df = pd.read_csv(HISTORY_DB)
+            st.dataframe(h_df[h_df['Owner'] == st.session_state.u_data['Username']].sort_values(by='Tarih', ascending=False), use_container_width=True)
+
+    # --- 9. ANALİZLER (RİSK & DAĞILIM) ---
+    elif menu == "📈 ANALİZLER":
+        st.title("📈 Stratejik Analiz Paneli")
+        if not my_p.empty:
+            my_p['Value'] = my_p['Maliyet'] * my_p['Adet']
+            c1, c2 = st.columns(2)
+            with c1:
+                st.plotly_chart(px.pie(my_p, values='Value', names='Kod', hole=0.6, title="Varlık Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
+            with c2:
+                st.plotly_chart(px.bar(my_p, x='Kod', y='Value', color='Kat', title="Varlık Büyüklükleri"), use_container_width=True)
+            
+            # Risk Analizi (Zeka Katmanı)
+            st.subheader("🛡️ Risk ve Diversifikasyon Analizi")
+            max_weight = (my_p['Value'].max() / my_p['Value'].sum()) * 100
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"""
                 <div class="analysis-card">
-                    <h4>Stratejik Not</h4>
-                    <p>Şu an portföyünde toplam <b>{len(my_port)}</b> farklı varlık bulunuyor. 
-                    En yüksek adetli pozisyonun: <b>{my_port.loc[my_port['Adet'].idxmax(), 'Kod']}</b></p>
+                    <h4>Konsantrasyon Riski</h4>
+                    <p>En büyük pozisyon ağırlığı: <b>%{max_weight:.1f}</b></p>
+                    {"⚠️ Uyarı: Tek varlık %30'u geçmiş!" if max_weight > 30 else "✅ Portföy dengeli görünüyor."}
                 </div>
                 """, unsafe_allow_html=True)
-        else: 
-            st.warning("Analiz edilecek veri bulunamadı. Lütfen portföyünüze varlık ekleyin.")
-            
-    # --- 10. TAKVİM (GERÇEK VERİ SİMÜLASYONU) ---
-    elif "TAKVİM" in menu:
+            with col_b:
+                st.markdown(f"""
+                <div class="analysis-card">
+                    <h4>Sektörel Çeşitlilik</h4>
+                    <p>Toplam Kategori Sayısı: <b>{my_p['Kat'].nunique()}</b></p>
+                    {"ℹ️ Farklı varlık sınıfları eklemeyi düşünebilirsiniz." if my_p['Kat'].nunique() < 2 else "✅ Sektörel dağılım başarılı."}
+                </div>
+                """, unsafe_allow_html=True)
+        else: st.warning("Analiz için veri yetersiz.")
+
+    # --- 10. TAKVİM & HABERLER ---
+    elif menu == "📅 TAKVİM":
         st.title("📅 Ekonomik Takvim")
-        today = datetime.now().strftime("%B %Y")
-        st.subheader(f"Önemli Gelişmeler - {today}")
-        
-        # Gerçek ekonomik takvim verisi yapısı
-        events = [
-            {"Tarih": "15 Jan", "Saat": "14:30", "Ülke": "ABD", "Olay": "Üretici Fiyat Endeksi (ÜFE)", "Etki": "Yüksek 🔥"},
-            {"Tarih": "20 Jan", "Saat": "10:00", "Ülke": "TR", "Olay": "Tüketici Güven Endeksi", "Etki": "Orta ⚡"},
-            {"Tarih": "22 Jan", "Saat": "16:45", "Ülke": "AB", "Olay": "Faiz Kararı Açıklaması", "Etki": "Kritik 💎"},
-        ]
-        st.table(events)
+        st.table([
+            {"Tarih": "22 Ocak", "Olay": "TCMB Faiz Kararı", "Önem": "Yüksek 🔥"},
+            {"Tarih": "29 Ocak", "Olay": "ABD GSYH Verisi", "Önem": "Orta ⚡"},
+            {"Tarih": "05 Şubat", "Olay": "Enflasyon Verisi (TÜİK)", "Önem": "Yüksek 🔥"}
+        ])
 
-    # --- 11. HABERLER (RSS ÇEKİCİ) ---
-    elif "HABERLER" in menu:
-        st.title("📰 Piyasa Haberleri")
-        # Basit RSS simülasyonu (Canlı akış gibi görünür)
-        news_items = [
-            {"T": "Borsa İstanbul Günü Rekorla Kapattı", "S": "Finans Haber", "Z": "12 dk önce"},
-            {"T": "FED Yetkililerinden Faiz Sinyali", "S": "Global Markets", "Z": "45 dk önce"},
-            {"T": "Bitcoin 100 Bin Dolar Sınırında", "S": "Crypto Watch", "Z": "1 saat önce"}
-        ]
-        for n in news_items:
-            with st.expander(f"{n['T']}"):
-                st.write(f"Kaynak: {n['S']} | Zaman: {n['Z']}")
-                st.write("Piyasalarda volatilite devam ederken yatırımcılar merkez bankalarının kararlarına odaklandı...")
+    elif menu == "📰 HABERLER":
+        st.title("📰 Piyasa Akışı")
+        for h in [
+            {"T": "BIST 100 Yeni Zirveyi Zorluyor", "S": "AKOSELL Haber", "D": "Analistler 11.000 seviyesinin kritik olduğunu belirtiyor."},
+            {"T": "Kripto Varlıklarda ETF Rüzgarı", "S": "Global Finans", "D": "Kurumsal girişler kripto piyasasını domine ediyor."}
+        ]:
+            st.markdown(f"<div class='metric-card'><b>{h['S']}</b><br><h4>{h['T']}</h4><p>{h['D']}</p></div><br>", unsafe_allow_html=True)
 
-    # --- 12. AYARLAR ---
-    elif "AYARLAR" in menu:
+    # --- 11. AYARLAR ---
+    elif menu == "⚙️ AYARLAR":
         st.title("⚙️ Terminal Ayarları")
-        
-        # PROFİL GÜNCELLEME
         with st.expander("👤 Profil Bilgileri"):
-            new_name = st.text_input("Görünen İsim", value=st.session_state.u_data['Name'])
-            new_mail = st.text_input("E-Posta", value=st.session_state.u_data['Email'])
-            if st.button("Bilgileri Güncelle"):
-                u_df = pd.read_csv(USER_DB)
-                u_df.loc[u_df['Username'] == st.session_state.u_data['Username'], ['Name', 'Email']] = [new_name, new_mail]
-                u_df.to_csv(USER_DB, index=False)
-                # Session state'i de güncelle ki sidebar hemen değişsin
-                st.session_state.u_data['Name'] = new_name
-                st.session_state.u_data['Email'] = new_mail
-                st.success("Profil bilgileri güncellendi!")
-                st.rerun()
-
-        # ŞİFRE DEĞİŞTİRME (YENİ EKLENDİ)
-        with st.expander("🔐 Şifre Değiştir"):
-            current_pw = st.text_input("Mevcut Şifre", type="password")
-            new_pw = st.text_input("Yeni Şifre", type="password")
-            confirm_pw = st.text_input("Yeni Şifre (Tekrar)", type="password")
-            
-            if st.button("Şifreyi Güncelle"):
-                if new_pw != confirm_pw:
-                    st.error("Yeni şifreler uyuşmuyor!")
-                elif len(new_pw) < 4:
-                    st.error("Şifre en az 4 karakter olmalıdır!")
-                else:
-                    u_df = pd.read_csv(USER_DB)
-                    # Mevcut şifre kontrolü
-                    hp_current = hashlib.sha256(str.encode(current_pw)).hexdigest()
-                    user_row = u_df[u_df['Username'] == st.session_state.u_data['Username']]
-                    
-                    if user_row['Password'].values[0] == hp_current:
-                        # Yeni şifreyi hashle ve kaydet
-                        hp_new = hashlib.sha256(str.encode(new_pw)).hexdigest()
-                        u_df.loc[u_df['Username'] == st.session_state.u_data['Username'], 'Password'] = hp_new
-                        u_df.to_csv(USER_DB, index=False)
-                        st.success("Şifreniz başarıyla değiştirildi!")
-                    else:
-                        st.error("Mevcut şifreniz hatalı!")
-
-        # VERİ YÖNETİMİ
-        with st.expander("⚠️ Veri Yönetimi"):
-            st.warning("Bu işlem portföyünüzdeki tüm varlıkları kalıcı olarak siler!")
-            if st.button("PORTFÖYÜMÜ SIFIRLA", type="secondary"):
-                others = df_port[df_port['Owner'] != st.session_state.u_data['Username']]
-                others.to_csv(PORT_DB, index=False)
-                st.success("Portföy sıfırlandı.")
-                st.rerun()
-     
+            st.text_input("Görünen İsim", value=st.session_state.u_data['Name'])
+            st.button("GÜNCELLE")
+        
+        if st.button("🗑️ TÜM VERİLERİ SIFIRLA", type="secondary"):
+            pd.DataFrame(columns=p_df.columns).to_csv(PORT_DB, index=False)
+            pd.DataFrame(columns=pd.read_csv(HISTORY_DB).columns).to_csv(HISTORY_DB, index=False)
+            st.rerun()
