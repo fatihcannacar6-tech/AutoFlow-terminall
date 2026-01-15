@@ -2,5 +2,6 @@ streamlit
 pandas
 yfinance
 plotly
+scipy
 fpdf
 numpy
