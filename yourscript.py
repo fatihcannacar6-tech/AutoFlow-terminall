@@ -24,7 +24,7 @@ def init_db():
 
 init_db()
 
-# --- 2. MODERN BEYAZ ARAYÜZ VE MOBİL LOGİN DÜZENİ ---
+# --- 2. MODER VE MOBİL UYUMLU ARAYÜZ ---
 st.set_page_config(page_title="AutoFlow Terminal", layout="wide", page_icon="🏛️")
 st.markdown("""
     <style>
@@ -50,7 +50,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ANALİZ FONKSİYONLARI ---
+# --- 3. YARDIMCI FONKSİYONLAR ---
+def tr_fix(text):
+    """PDF için Türkçe karakterleri temizler"""
+    chars = {"İ": "I", "ı": "i", "Ş": "S", "ş": "s", "Ğ": "G", "ğ": "g", "Ü": "U", "ü": "u", "Ö": "O", "ö": "o", "Ç": "C", "ç": "c"}
+    for tr, eng in chars.items():
+        text = text.replace(tr, eng)
+    return text
+
 def fetch_prices(df):
     if df.empty: return df
     df = df.copy()
@@ -66,17 +73,16 @@ def fetch_prices(df):
     df['Kâr/Zarar'] = df['Değer'] - (df['Maliyet'] * df['Adet'])
     return df
 
-# --- 4. GİRİŞ VE KAYIT PANELİ (ORTALANMIŞ VE KÜÇÜLTÜLMÜŞ) ---
+# --- 4. GİRİŞ VE KAYIT PANELİ ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    # Boşluklar kullanarak Login alanını ortaya hapsediyoruz
     st.write("##") 
-    _, col_mid, _ = st.columns([1, 1.2, 1]) # Ortadaki sütun giriş ekranı olacak
+    _, col_mid, _ = st.columns([1, 1.2, 1])
     
     with col_mid:
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center;'>🏛️ AutoFlow</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>🏛️ AKOSELL WMS</h2>", unsafe_allow_html=True)
         tab1, tab2 = st.tabs(["Giriş Yap", "Kayıt Ol"])
         
         with tab1:
@@ -113,7 +119,7 @@ else:
     with st.sidebar:
         u_name = st.session_state.u_data.get('Name', 'Kullanıcı')
         u_role = st.session_state.u_data.get('Role', 'User')
-        st.markdown(f"### 🏛️ AutoFlow\n**{u_name}**")
+        st.markdown(f"### 🏛️ AKOSELL WMS\n**{u_name}**")
         nav = ["📊 DASHBOARD", "⚖️ OPTİMİZASYON", "💼 PORTFÖYÜM", "⚙️ AYARLAR"]
         if u_role == "Admin": nav.append("🔑 ADMIN PANELİ")
         menu = st.radio("MENÜ", nav)
@@ -135,9 +141,9 @@ else:
             c3.metric("Aktif Varlık", f"{len(proc_df)} Kalem")
             st.dataframe(proc_df[["Kod", "Adet", "Maliyet", "Güncel", "Kâr/Zarar"]], use_container_width=True, hide_index=True)
             st.plotly_chart(go.Figure(data=[go.Pie(labels=proc_df['Kod'], values=proc_df['Değer'], hole=.4)]))
-        else: st.info("Varlık ekleyin.")
+        else: st.info("Henüz varlık eklemediniz.")
 
-    # --- 7. AI PORTFÖY OPTİMİZASYONU & PDF RAPORU ---
+    # --- 7. AI OPTİMİZASYON & PDF RAPORU ---
     elif menu == "⚖️ OPTİMİZASYON":
         st.title("⚖️ AI Risk & Optimizasyon Analizi")
         if len(my_port) >= 2:
@@ -153,43 +159,42 @@ else:
                     vol = hist.pct_change().std() * np.sqrt(252) * 100
                     ma20 = hist.rolling(20).mean().iloc[-1]
                     last = hist.iloc[-1]
-                    risk_cat = "Düşük" if vol < 25 else ("Orta" if vol < 45 else "Yüksek")
-                    signal = "AL / TUT" if last > ma20 else "SAT / İZLE"
+                    risk_cat = "Dusuk" if vol < 25 else ("Orta" if vol < 45 else "Yuksek")
+                    signal = "AL / TUT" if last > ma20 else "SAT / IZLE"
                     analysis_results.append({"Varlık": a, "Risk (%)": f"{vol:.2f}", "Risk Seviyesi": risk_cat, "Sinyal": signal})
 
             res_df = pd.DataFrame(analysis_results)
             st.subheader("📋 Hisse Bazlı AI Sinyalleri")
             st.table(res_df)
 
-            # PDF Oluşturma Fonksiyonu
+            # PDF İndirme Butonu
             def export_pdf(df):
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 16)
-                pdf.cell(190, 10, "AutoFlow AI Portfoy Analizi", ln=True, align='C')
+                pdf.cell(190, 10, tr_fix("AutoFlow AI Portfoy Analiz Raporu"), ln=True, align='C')
                 pdf.ln(10)
                 pdf.set_font("Arial", 'B', 12)
-                # Tablo Başlıkları
-                pdf.cell(40, 10, "Varlik", 1)
-                pdf.cell(40, 10, "Risk %", 1)
-                pdf.cell(50, 10, "Risk Seviyesi", 1)
-                pdf.cell(60, 10, "Sinyal", 1)
+                pdf.cell(40, 10, tr_fix("Varlik"), 1)
+                pdf.cell(40, 10, tr_fix("Risk %"), 1)
+                pdf.cell(50, 10, tr_fix("Risk Seviyesi"), 1)
+                pdf.cell(60, 10, tr_fix("AI Sinyali"), 1)
                 pdf.ln()
-                # Tablo Verileri
                 pdf.set_font("Arial", '', 12)
                 for i, row in df.iterrows():
-                    pdf.cell(40, 10, str(row['Varlık']), 1)
-                    pdf.cell(40, 10, str(row['Risk (%)']), 1)
-                    pdf.cell(50, 10, str(row['Risk Seviyesi']), 1)
-                    pdf.cell(60, 10, str(row['Sinyal']), 1)
+                    pdf.cell(40, 10, tr_fix(str(row['Varlık'])), 1)
+                    pdf.cell(40, 10, tr_fix(str(row['Risk (%)'])), 1)
+                    pdf.cell(50, 10, tr_fix(str(row['Risk Seviyesi'])), 1)
+                    pdf.cell(60, 10, tr_fix(str(row['Sinyal'])), 1)
                     pdf.ln()
-                return pdf.output(dest='S').encode('latin-1')
+                return pdf.output(dest='S').encode('latin-1', 'ignore')
 
-            # PDF İndirme Butonu
-            pdf_data = export_pdf(res_df)
-            st.download_button("📄 ANALİZ RAPORUNU PDF İNDİR", data=pdf_data, file_name="AI_Analiz_Raporu.pdf", mime="application/pdf")
+            try:
+                pdf_bytes = export_pdf(res_df)
+                st.download_button("📄 ANALİZ RAPORUNU PDF İNDİR", data=pdf_bytes, file_name="AI_Analiz_Raporu.pdf", mime="application/pdf")
+            except:
+                st.error("PDF oluşturulurken karakter hatası oluştu.")
 
-            # Sepet Optimizasyonu Grafiği
             st.divider()
             st.subheader("🎯 İdeal Portföy Dağılımı")
             returns = data.pct_change().dropna()
@@ -235,7 +240,6 @@ else:
     # --- 10. AYARLAR ---
     elif menu == "⚙️ AYARLAR":
         st.title("⚙️ Hesap Ayarları")
-        st.write(f"Kullanıcı: **{u_name}** | Yetki: **{u_role}**")
         with st.expander("Şifre Değiştir"):
             new_p = st.text_input("Yeni Şifre", type="password")
             if st.button("Güncelle"):
